@@ -1,9 +1,9 @@
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-public class OrderParserTest {
+class OrderParserTest {
     @Test
-    public void TestParseIcebergOrder() {
+    void TestParseIcebergOrder() {
         String line = "B,2,3,5,4";
         Order parsedOrder = OrderParser.fromSimplifiedAscii(line);
         Assertions.assertTrue(parsedOrder instanceof IcebergOrder);
@@ -16,7 +16,7 @@ public class OrderParserTest {
     }
 
     @Test
-    public void TestParseLimitOrder() {
+    void TestParseLimitOrder() {
         String line = "B,2,3,4";
         Order parsedOrder = OrderParser.fromSimplifiedAscii(line);
         Assertions.assertFalse(parsedOrder instanceof IcebergOrder);

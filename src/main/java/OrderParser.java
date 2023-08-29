@@ -1,4 +1,8 @@
 public class OrderParser {
+    private OrderParser() {
+        throw new IllegalStateException("Utility Class");
+    }
+
     public static Order fromSimplifiedAscii(String line) {
         String[] args = line.split(",");
         char type = args[0].charAt(0);
@@ -10,7 +14,7 @@ public class OrderParser {
             return new IcebergOrder(type, id, price, quantity, peak);
         }
         else {
-            return new Order(type, id, price, quantity);
+            return new LimitOrder(type, id, price, quantity);
         }
     }
 }

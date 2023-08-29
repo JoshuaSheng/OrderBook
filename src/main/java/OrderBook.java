@@ -1,123 +1,120 @@
-import java.lang.reflect.Array;
 import java.util.*;
 
 public class OrderBook {
-    private final TreeMap<Short, PriceLevel> buyOrders;
-    private final TreeMap<Short, PriceLevel> sellOrders;
+    private final SortedMap<Short, PriceLevel> sortedBuyPrices = new TreeMap<>(Comparator.reverseOrder());
+    private final SortedMap<Short, PriceLevel> sortedSellPrices = new TreeMap<>();
+    private final Map<Short, PriceLevel> buyPrices = new HashMap<>();
+    private final Map<Short, PriceLevel> sellPrices = new HashMap<>();
     ArrayList<Trade> trades = new ArrayList<>();
 
-    OrderBook() {
-        buyOrders = new TreeMap<>(Comparator.reverseOrder());
-        sellOrders = new TreeMap<>();
+    private void createTrade(Order bid, Order ask) {
+        int tradeVolume = Math.min(bid.quantity, ask.quantity);
+        short tradePrice = (bid.instanceNumber < ask.instanceNumber) ? bid.price : ask.price;
+        bid.quantity -= tradeVolume;
+        ask.quantity -= tradeVolume;
+
+        Trade trade = new Trade(bid.id, ask.id, tradePrice, tradeVolume);
+        trades.add(trade);
+        OrderBookLogger.printTrade(trade);
     }
 
-    private void matchTrades() {
-        Map.Entry<Short, PriceLevel> buyPriceEntry = buyOrders.firstEntry();
-        Map.Entry<Short, PriceLevel> sellPriceEntry = sellOrders.firstEntry();
+    private void matchOrders() {
+        Iterator<Order> buyOrderIterator = iterateBuyOrders();
+        Iterator<Order> sellOrderIterator = iterateSellOrders();
 
-        while (buyPriceEntry != null && sellPriceEntry != null && buyPriceEntry.getKey() >= sellPriceEntry.getKey()) {
-            PriceLevel buyPriceLevel = buyPriceEntry.getValue();
-            PriceLevel sellPriceLevel = sellPriceEntry.getValue();
+        Order topBuy = buyOrderIterator.hasNext() ? buyOrderIterator.next() : null;
+        Order topSell = sellOrderIterator.hasNext() ? sellOrderIterator.next() : null;
 
-            while (!buyPriceLevel.orders.isEmpty() && !sellPriceLevel.orders.isEmpty()) {
-                //find min vol, subtract from both, create and print a trade
-                Order earliestBuy = buyPriceLevel.orders.getFirst();
-                Order earliestSell = sellPriceLevel.orders.getFirst();
+        while (topBuy != null && topSell != null && topBuy.price >= topSell.price) {
+            createTrade(topBuy, topSell);
 
-                int tradeVolume = Math.min(earliestBuy.quantity, earliestSell.quantity);
-                short executionPrice = (earliestBuy.timeCreated < earliestSell.timeCreated) ? earliestBuy.price : earliestSell.price;
-                earliestBuy.quantity -= tradeVolume;
-                earliestSell.quantity -= tradeVolume;
-
-                Trade executedTrade = new Trade(earliestBuy.id, earliestSell.id, executionPrice, tradeVolume);
-                trades.add(executedTrade);
-                OrderBookLogger.printTrade(executedTrade);
-
-                if (earliestBuy.quantity == 0) {
-                    buyPriceLevel.orders.removeFirst();
-                }
-                else {
-                    sellPriceLevel.orders.removeFirst();
-                }
+            if (topBuy.quantity == 0) {
+                buyOrderIterator.remove();
+                topBuy = buyOrderIterator.hasNext() ? buyOrderIterator.next() : null;
             }
-            if (buyPriceLevel.orders.isEmpty()) {
-                buyOrders.remove(buyPriceLevel.price);
-                buyPriceEntry = buyOrders.firstEntry();
-            }
-            if (sellPriceLevel.orders.isEmpty()) {
-                sellOrders.remove(sellPriceLevel.price);
-                sellPriceEntry = sellOrders.firstEntry();
+            if (topSell.quantity == 0) {
+                sellOrderIterator.remove();
+                topSell = sellOrderIterator.hasNext() ? sellOrderIterator.next() : null;
             }
         }
     }
 
     public void addOrder(Order order) {
-        TreeMap<Short, PriceLevel> pricesList = (order.type == 'B') ? buyOrders : sellOrders;
+        SortedMap<Short, PriceLevel> sortedPrices = (order.type == 'B') ? sortedBuyPrices : sortedSellPrices;
+        Map<Short, PriceLevel> prices = (order.type == 'B') ? buyPrices : sellPrices;
 
-        if (pricesList.containsKey(order.price)) {
-            pricesList.get(order.price).addOrder(order);
+        if (prices.containsKey(order.price)) {
+            prices.get(order.price).addOrder(order);
         }
         else {
             PriceLevel newPriceLevel = new PriceLevel(order.price);
             newPriceLevel.addOrder(order);
-            pricesList.put(order.price, newPriceLevel);
+            sortedPrices.put(order.price, newPriceLevel);
+            prices.put(order.price, newPriceLevel);
         }
 
-        matchTrades();
+        matchOrders();
     }
 
     public Iterator<Order> iterateBuyOrders() {
-        return new PriceLevelOrderIterator(this.buyOrders);
+        return new OrderBookIterator(this.sortedBuyPrices);
     }
 
     public Iterator<Order> iterateSellOrders() {
-        return new PriceLevelOrderIterator(this.sellOrders);
-    }
-}
-
-class PriceLevel implements Comparable<PriceLevel>{
-    short price;
-    LinkedList<Order> orders = new LinkedList<>();
-
-    PriceLevel(short price) {
-        this.price = price;
+        return new OrderBookIterator(this.sortedSellPrices);
     }
 
-    public void addOrder(Order order) {
-        orders.add(order);
+    //represents all orders of a given price on either the bid or ask side.
+    static class PriceLevel implements Comparable<PriceLevel>{
+        short price;
+        LinkedList<Order> orders = new LinkedList<>();
+
+        PriceLevel(short price) {
+            this.price = price;
+        }
+
+        public void addOrder(Order order) {
+            orders.add(order);
+        }
+
+        public int compareTo(PriceLevel other) {
+            return Short.compare(price, other.price);
+        }
     }
 
-    public int compareTo(PriceLevel other) {
-        return Short.compare(price, other.price);
-    }
-}
+    //iterates over all the bids or asks in priority order
+    private static class OrderBookIterator implements Iterator<Order> {
+        private final Iterator<PriceLevel> currentPriceIterator;
+        private Iterator<Order> currentOrderIterator;
 
-class PriceLevelOrderIterator implements Iterator<Order> {
-    private final Iterator<PriceLevel> priceLevelIterator;
-    private Iterator<Order> currentOrderIterator;
+        public OrderBookIterator(SortedMap<Short, PriceLevel> priceLevelMap) {
+            this.currentPriceIterator = priceLevelMap.values().iterator();
+            this.currentOrderIterator = null;
+        }
 
-    public PriceLevelOrderIterator(TreeMap<Short, PriceLevel> priceLevelMap) {
-        this.priceLevelIterator = priceLevelMap.values().iterator();
-        this.currentOrderIterator = null;
-    }
-
-    @Override
-    public boolean hasNext() {
-        while (currentOrderIterator == null || !currentOrderIterator.hasNext()) {
-            if (priceLevelIterator.hasNext()) {
-                currentOrderIterator = priceLevelIterator.next().orders.iterator();
-            } else {
-                return false;
+        @Override
+        public boolean hasNext() {
+            while (currentOrderIterator == null || !currentOrderIterator.hasNext()) {
+                if (currentPriceIterator.hasNext()) {
+                    currentOrderIterator = currentPriceIterator.next().orders.iterator();
+                } else {
+                    return false;
+                }
             }
+            return true;
         }
-        return true;
-    }
 
-    @Override
-    public Order next() {
-        if (!hasNext()) {
-            throw new NoSuchElementException();
+        @Override
+        public Order next() {
+            if (!hasNext()) {
+                throw new NoSuchElementException();
+            }
+            return currentOrderIterator.next();
         }
-        return currentOrderIterator.next();
+
+        @Override
+        public void remove() {
+            currentOrderIterator.remove();
+        }
     }
 }

@@ -10,4 +10,13 @@ public class Trade {
         this.price = price;
         this.quantity = quantity;
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        Trade trade = (Trade) o;
+        return this.buyOrderId == trade.buyOrderId && this.sellOrderId == trade.sellOrderId && this.price == trade.price && this.quantity == trade.quantity;
+    }
 }
