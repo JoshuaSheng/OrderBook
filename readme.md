@@ -1,6 +1,6 @@
 ## SETSmm Iceberg Order Exercise
 
-The following is ny take on building an order book that supports both limit and iceberg orders. It's based this old
+The following is my take on building an order book that supports both limit and iceberg orders. It's based this old
 article on implementing trading systems:
 
 https://web.archive.org/web/20110219163418/http://howtohft.wordpress.com/2011/02/15/building-a-trading-system-general-considerations/
