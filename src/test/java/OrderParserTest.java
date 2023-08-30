@@ -10,8 +10,8 @@ class OrderParserTest {
         assert(parsedOrder.type == 'B');
         assert(parsedOrder.id == 2);
         assert(parsedOrder.price == 3);
-        assert(parsedOrder.quantity == 5);
-        assert(parsedOrder.getOrderBookQuantity() == 4);
+        assert(parsedOrder.getTotalQuantity() == 5);
+        assert(parsedOrder.quantity == 4);
 
     }
 
@@ -25,6 +25,6 @@ class OrderParserTest {
         assert(parsedOrder.id == 2);
         assert(parsedOrder.price == 3);
         assert(parsedOrder.quantity == 4);
-        assert(parsedOrder.getOrderBookQuantity() == 4);
+        assert(parsedOrder.getTotalQuantity() == 4);
     }
 }

@@ -3,12 +3,13 @@ abstract class Order {
     final int id;
     final short price;
     int quantity;
+    boolean isExecuted = false;
     /*
-    instance numbers are used to determine which objects were created first in place of timestamps, which are challenging
+    this time variable used to determine which objects were created first in place of timestamps, which are challenging
     to use in a test environment where everything executes at the same time.
      */
-    private static int instanceCount = 0;
-    int instanceNumber;
+    protected static int time = 0;
+    int timestamp;
 
     Order(char type, int id, short price, int quantity) {
         assert(price > 0);
@@ -17,11 +18,18 @@ abstract class Order {
         this.id = id;
         this.price = price;
         this.quantity = quantity;
-        instanceCount += 1;
-        this.instanceNumber = instanceCount;
+        time += 1;
+        this.timestamp = time;
     }
 
-    abstract int getOrderBookQuantity();
+    abstract void decreaseQuantity(int amount);
+
+    abstract int getTotalQuantity();
+
+    void updateTimePriority() {
+        time += 1;
+        this.timestamp = time;
+    }
 
     @Override
     public boolean equals(Object o) {

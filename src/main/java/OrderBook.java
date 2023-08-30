@@ -5,37 +5,62 @@ public class OrderBook {
     private final SortedMap<Short, PriceLevel> sortedSellPrices = new TreeMap<>();
     private final Map<Short, PriceLevel> buyPrices = new HashMap<>();
     private final Map<Short, PriceLevel> sellPrices = new HashMap<>();
+    //for testing purposes
     ArrayList<Trade> trades = new ArrayList<>();
 
-    private void createTrade(Order bid, Order ask) {
+    private void createTradeIfNotExists(Order bid, Order ask, Map<Tuple<Order, Order>, Trade> tradeByOrderIds, List<Trade> pendingTrades) {
         int tradeVolume = Math.min(bid.quantity, ask.quantity);
-        short tradePrice = (bid.instanceNumber < ask.instanceNumber) ? bid.price : ask.price;
-        bid.quantity -= tradeVolume;
-        ask.quantity -= tradeVolume;
+        short tradePrice = (bid.timestamp < ask.timestamp) ? bid.price : ask.price;
 
-        Trade trade = new Trade(bid.id, ask.id, tradePrice, tradeVolume);
-        trades.add(trade);
-        OrderBookLogger.printTrade(trade);
+        bid.decreaseQuantity(tradeVolume);
+        ask.decreaseQuantity(tradeVolume);
+
+        Tuple<Order, Order> orderIds = new Tuple<>(bid, ask);
+        if (tradeByOrderIds.containsKey(orderIds)) {
+            Trade trade = tradeByOrderIds.get(orderIds);
+            trade.quantity += tradeVolume;
+        }
+        else {
+            Trade trade = new Trade(bid.id, ask.id, tradePrice, tradeVolume);
+            trades.add(trade);
+            pendingTrades.add(trade);
+            tradeByOrderIds.put(orderIds, trade);
+        }
+    }
+
+    private Order clearOrderIfComplete(Order order, OrderBookIterator orderBookIterator) {
+        if (order.isExecuted) {
+            if (order.quantity > 0) {
+                order.isExecuted = false;
+                orderBookIterator.addToPriceLevel(order);
+            }
+            orderBookIterator.remove();
+            return orderBookIterator.hasNext() ? orderBookIterator.next() : null;
+        }
+        else {
+            return order;
+        }
     }
 
     private void matchOrders() {
-        Iterator<Order> buyOrderIterator = iterateBuyOrders();
-        Iterator<Order> sellOrderIterator = iterateSellOrders();
+        Map<Tuple<Order, Order>, Trade> tradeByOrderIds = new HashMap<>();
+        List<Trade> pendingTrades = new LinkedList<>();
+
+        OrderBookIterator buyOrderIterator = iterateBuyOrders();
+        OrderBookIterator sellOrderIterator = iterateSellOrders();
 
         Order topBuy = buyOrderIterator.hasNext() ? buyOrderIterator.next() : null;
         Order topSell = sellOrderIterator.hasNext() ? sellOrderIterator.next() : null;
 
         while (topBuy != null && topSell != null && topBuy.price >= topSell.price) {
-            createTrade(topBuy, topSell);
+            createTradeIfNotExists(topBuy, topSell, tradeByOrderIds, pendingTrades);
 
-            if (topBuy.quantity == 0) {
-                buyOrderIterator.remove();
-                topBuy = buyOrderIterator.hasNext() ? buyOrderIterator.next() : null;
-            }
-            if (topSell.quantity == 0) {
-                sellOrderIterator.remove();
-                topSell = sellOrderIterator.hasNext() ? sellOrderIterator.next() : null;
-            }
+            topBuy = clearOrderIfComplete(topBuy, buyOrderIterator);
+            topSell = clearOrderIfComplete(topSell, sellOrderIterator);
+        }
+
+        for (Trade trade: pendingTrades) {
+            OrderBookLogger.printTrade(trade);
         }
     }
 
@@ -54,13 +79,17 @@ public class OrderBook {
         }
 
         matchOrders();
+
+        if (order instanceof IcebergOrder) {
+            ((IcebergOrder) order).refillQuantity();
+        }
     }
 
-    public Iterator<Order> iterateBuyOrders() {
+    public OrderBookIterator iterateBuyOrders() {
         return new OrderBookIterator(this.sortedBuyPrices);
     }
 
-    public Iterator<Order> iterateSellOrders() {
+    public OrderBookIterator iterateSellOrders() {
         return new OrderBookIterator(this.sortedSellPrices);
     }
 
@@ -68,13 +97,16 @@ public class OrderBook {
     static class PriceLevel implements Comparable<PriceLevel>{
         short price;
         LinkedList<Order> orders = new LinkedList<>();
+        //we use nextOrders to avoid adding to a list we're currently iterating on.
+        //we only add to nextOrders, and whenever we finish iterating on orders, we load in nextOrders
+        LinkedList<Order> nextOrders = new LinkedList<>();
 
         PriceLevel(short price) {
             this.price = price;
         }
 
         public void addOrder(Order order) {
-            orders.add(order);
+            nextOrders.add(order);
         }
 
         public int compareTo(PriceLevel other) {
@@ -83,20 +115,38 @@ public class OrderBook {
     }
 
     //iterates over all the bids or asks in priority order
-    private static class OrderBookIterator implements Iterator<Order> {
+    protected static class OrderBookIterator implements Iterator<Order> {
+        private PriceLevel currentPriceLevel;
         private final Iterator<PriceLevel> currentPriceIterator;
-        private Iterator<Order> currentOrderIterator;
+        private ListIterator<Order> currentOrderIterator;
 
         public OrderBookIterator(SortedMap<Short, PriceLevel> priceLevelMap) {
             this.currentPriceIterator = priceLevelMap.values().iterator();
             this.currentOrderIterator = null;
+            this.currentPriceLevel = null;
+        }
+
+        private void updatePriceLevelOrders() {
+            currentPriceLevel.orders.addAll(currentPriceLevel.nextOrders);
+            currentPriceLevel.nextOrders = new LinkedList<>();
+            currentOrderIterator = this.currentPriceLevel.orders.listIterator();
         }
 
         @Override
         public boolean hasNext() {
+
             while (currentOrderIterator == null || !currentOrderIterator.hasNext()) {
+                //update previous PriceLevel
+                if (currentOrderIterator != null && !currentPriceLevel.nextOrders.isEmpty()) {
+                    updatePriceLevelOrders();
+                    break;
+                }
+
+                //update next PriceLevel
                 if (currentPriceIterator.hasNext()) {
-                    currentOrderIterator = currentPriceIterator.next().orders.iterator();
+                    currentPriceLevel = currentPriceIterator.next();
+                    updatePriceLevelOrders();
+                    currentOrderIterator = this.currentPriceLevel.orders.listIterator();
                 } else {
                     return false;
                 }
@@ -110,6 +160,10 @@ public class OrderBook {
                 throw new NoSuchElementException();
             }
             return currentOrderIterator.next();
+        }
+
+        public void addToPriceLevel(Order order) {
+            currentPriceLevel.nextOrders.add(order);
         }
 
         @Override

@@ -106,14 +106,14 @@ public class OrderBookLogger {
             if (currentBuyPriceLevel.hasNext()) {
                 Order order = currentBuyPriceLevel.next();
                 buyId = padValue(Integer.toString(order.id), ID_COLUMN_WIDTH, true);
-                buyVolume = padValue(String.format("%,d", order.getOrderBookQuantity()), VOLUME_COLUMN_WIDTH, true);
+                buyVolume = padValue(String.format("%,d", order.quantity), VOLUME_COLUMN_WIDTH, true);
                 buyPrice = padValue(String.format("%,d", order.price), PRICE_COLUMN_WIDTH, true);
             }
 
             if (currentSellPriceLevel.hasNext()) {
                 Order order = currentSellPriceLevel.next();
                 sellId = padValue(Integer.toString(order.id), ID_COLUMN_WIDTH, true);
-                sellVolume = padValue(String.format("%,d", order.getOrderBookQuantity()), VOLUME_COLUMN_WIDTH, true);
+                sellVolume = padValue(String.format("%,d", order.quantity), VOLUME_COLUMN_WIDTH, true);
                 sellPrice = padValue(String.format("%,d", order.price), PRICE_COLUMN_WIDTH, true);
             }
 
@@ -121,6 +121,5 @@ public class OrderBookLogger {
         }
 
         printTableLine(FULL_TABLE_COLUMN_WIDTH);
-
     }
 }

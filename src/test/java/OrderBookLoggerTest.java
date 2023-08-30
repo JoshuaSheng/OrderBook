@@ -179,13 +179,43 @@ class OrderBookLoggerTest {
 
         String expectedOutput = String.join(System.lineSeparator(),
                 "4,1,2,10000",
-                "4,2,2,10000",
-                "4,3,2,5000",
+                "4,2,2,7500",
+                "4,3,2,7500",
                 "+-----------------------------------------------------------------+",
                 "| BUY                            | SELL                           |",
                 "| Id       | Volume      | Price | Price | Volume      | Id       |",
                 "+----------+-------------+-------+-------+-------------+----------+",
-                "|          |             |       |      2|        5,000|         3|",
+                "|          |             |       |      2|        2,500|         2|",
+                "|          |             |       |      2|        2,500|         3|",
+                "+-----------------------------------------------------------------+");
+
+        assertEquals(expectedOutput, printedOutput);
+    }
+
+    @Test
+    void RestingIcebergAggressiveOrder() {
+        OrderBook orderBook = new OrderBook();
+
+        Order[] orders = {
+                new IcebergOrder('S', 1, (short) 100, 500, 100),
+                new LimitOrder('B', 2, (short) 100, 75),
+        };
+
+        for (Order order: orders) {
+            orderBook.addOrder(order);
+        }
+
+        OrderBookLogger.printOrderBook(orderBook);
+
+        String printedOutput = output.toString().trim();
+
+        String expectedOutput = String.join(System.lineSeparator(),
+                "2,1,100,75",
+                "+-----------------------------------------------------------------+",
+                "| BUY                            | SELL                           |",
+                "| Id       | Volume      | Price | Price | Volume      | Id       |",
+                "+----------+-------------+-------+-------+-------------+----------+",
+                "|          |             |       |    100|           25|         1|",
                 "+-----------------------------------------------------------------+");
 
         assertEquals(expectedOutput, printedOutput);
